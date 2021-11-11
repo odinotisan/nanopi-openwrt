@@ -12,30 +12,32 @@ sed -i 's/=1/=0/g' package/kernel/linux/files/sysctl-br-netfilter.conf
 
 sed -i '/DEPENDS/ s/$/ +libcap-bin/' `find package/ -follow -type f -path '*/luci-app-openclash/Makefile'`
 sed -i '/DEPENDS+/ s/$/ +wsdd2/' `find package/ -follow -type f -path '*/ksmbd-tools/Makefile'`
+sed -i '/DEPENDS/ s/$/ +frpc/' `find package/ -follow -type f -path '*/luci-app-frpc/Makefile'`
 
 sed -i 's/ +ntfs-3g/ +ntfs3-mount/' `find package/ -follow -type f -path '*/automount/Makefile'`
 sed -i '/skip\=/ a skip=`mount | grep -q /dev/$device; echo $?`' `find package/ -follow -type f -path */automount/files/15-automount`
 
-svn export https://github.com/klever1988/helloworld/trunk/luci-app-ssr-plus
-dir_ssrp=`find package/ -follow -type d -path '*/luci-app-ssr-plus'`
-cp luci-app-ssr-plus/root/etc/ssrplus/black.list ${dir_ssrp}/root/etc/ssrplus/black.list
-cp luci-app-ssr-plus/root/etc/ssrplus/white.list ${dir_ssrp}/root/etc/ssrplus/white.list
-cp luci-app-ssr-plus/root/etc/ssrplus/blockipv6.sh ${dir_ssrp}/root/etc/ssrplus/blockipv6.sh
-cp luci-app-ssr-plus/root/etc/ssrplus/blackipv4.sh ${dir_ssrp}/root/etc/ssrplus/blackipv4.sh
-cp luci-app-ssr-plus/root/usr/bin/ssr-rules ${dir_ssrp}/root/usr/bin/ssr-rules
-rm -rf luci-app-ssr-plus/
-
 mkdir -p `find package/ -follow -type d -path '*/pdnsd-alt'`/patches
 mv $GITHUB_WORKSPACE/patches/99-disallow-aaaa.patch `find package/ -follow -type d -path '*/pdnsd-alt'`/patches
 
-if [ $DEVICE != 'r1s' ]; then
+sed -i 's/5.0/1.0/' .ccache/ccache.conf || true
+
+if [ $BRANCH == 'master' ]; then
+
+  sed -i 's/5.10/5.4/' target/linux/rockchip/Makefile
+  git revert --no-commit -X theirs 91eed5d9fb74e6c740291362ba12e11a2222a9fd
+  
+  echo '# CONFIG_CRYPTO_GHASH_ARM_CE is not set' >> target/linux/sunxi/cortexa7/config-5.10
+  echo '# CONFIG_CRYPTO_CRCT10DIF_ARM_CE is not set' >> target/linux/sunxi/cortexa7/config-5.10
+  echo '# CONFIG_SUN50I_IOMMU is not set' >> target/linux/sunxi/cortexa7/config-5.10
+  echo '# CONFIG_UCLAMP_TASK is not set' >> target/linux/sunxi/config-5.4
+  sed -i '/LINUX_5_4/d' package/kernel/r8168/Makefile
 
   # fix po path for snapshot
   find package/ -follow -type d -path '*/po/zh-cn' | xargs dirname | xargs -n1 -i sh -c "rm -f {}/zh_Hans; ln -sf zh-cn {}/zh_Hans"
 
   # remove non-exist package from x86 profile
   sed -i 's/kmod-i40evf//' target/linux/x86/Makefile
-  sed -i 's/KERNEL_PATCHVER:=5.10/KERNEL_PATCHVER:=5.4/' target/linux/x86/Makefile
 
   # enable r2s oled plugin by default
   sed -i "s/enable '0'/enable '1'/" `find package/ -follow -type f -path '*/luci-app-oled/root/etc/config/oled'`
@@ -51,11 +53,21 @@ if [ $DEVICE != 'r1s' ]; then
   echo -e "\toption minfreq0 '816000'" >> $config_file_cpufreq
   echo -e "\toption maxfreq0 '1512000'\n" >> $config_file_cpufreq
 
+  git clean -f -d target/linux/rockchip
   # enable the gpu for device 'r2s'|'r2c'|'r4s'|'r1p'
   wget https://github.com/coolsnowwolf/lede/raw/757e42d70727fe6b937bb31794a9ad4f5ce98081/target/linux/rockchip/config-default -NP target/linux/rockchip/
   wget https://github.com/coolsnowwolf/lede/commit/f341ef96fe4b509a728ba1281281da96bac23673.patch
   git apply f341ef96fe4b509a728ba1281281da96bac23673.patch
   rm f341ef96fe4b509a728ba1281281da96bac23673.patch
+
+  # enable fan control
+  wget https://github.com/friendlyarm/friendlywrt/commit/cebdc1f94dcd6363da3a5d7e1e69fd741b8b718e.patch
+  git apply cebdc1f94dcd6363da3a5d7e1e69fd741b8b718e.patch
+  rm cebdc1f94dcd6363da3a5d7e1e69fd741b8b718e.patch
+
+  #this is a ugly fix
+  sed -i '/procd-ujail/d' include/target.mk
+  echo 'CONFIG_PACKAGE_procd-seccomp=y' >> $GITHUB_WORKSPACE/common.seed
 
   # bring the ethinfo back
   cd package/emortal/autocore/files/x86
